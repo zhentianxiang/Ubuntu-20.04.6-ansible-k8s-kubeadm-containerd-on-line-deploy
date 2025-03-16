@@ -1,0 +1,157 @@
+- name: 检查 containerd 发行包是否存在
+  stat:
+    path: "/tmp/cri-containerd-cni-{{containerd_version}}-linux-amd64.tar.gz"
+  register: containerd_binary
+
+- name: 下载 containerd 发行包
+  get_url:
+    url: "https://github.com/containerd/containerd/releases/download/v{{containerd_version}}/cri-containerd-cni-{{containerd_version}}-linux-amd64.tar.gz"
+    dest: "/tmp/cri-containerd-cni-{{containerd_version}}-linux-amd64.tar.gz"
+  when: not containerd_binary.stat.exists
+
+- name: 创建 containerd 安装目录
+  file:
+    path: "/usr/local/cri-containerd-cni"
+    state: directory
+
+- name: 解压 containerd 压缩包
+  unarchive:
+    src: "/tmp/cri-containerd-cni-{{containerd_version}}-linux-amd64.tar.gz"
+    dest: "/usr/local/cri-containerd-cni"
+    remote_src: yes  # 直接在目标机器上解压
+
+- name: 复制 containerd 二进制文件到 /usr/local/bin
+  copy:
+    remote_src: yes
+    src: "/usr/local/cri-containerd-cni/usr/local/bin/"
+    dest: "/usr/local/bin/"
+    mode: '0755'  # 赋予执行权限
+
+- name: 确保文件具有执行权限
+  file:
+    path: "/usr/local/bin/{{ item }}"
+    mode: '0755'
+  loop:
+    - containerd
+    - containerd-shim
+    - containerd-shim-runc-v1
+    - containerd-shim-runc-v2
+    - containerd-stress
+    - crictl
+    - critest
+    - ctd-decoder
+    - ctr
+
+- name: 复制 containerd.service 到 systemd 目录
+  copy:
+    src: "files/containerd.service"
+    dest: "/lib/systemd/system/containerd.service"
+    mode: '0644'  # 赋予合适的权限
+
+- name: 重新加载 systemd 守护进程
+  command: systemctl daemon-reload
+
+- name: 启动并设置 containerd 开机自启
+  systemd:
+    name: containerd
+    enabled: yes
+    state: started
+
+- name: 确保 /etc/containerd 目录存在
+  file:
+    path: /etc/containerd
+    state: directory
+    mode: '0755'  # 设置目录权限（可选）
+
+- name: 生成 containerd 默认配置文件
+  command: containerd config default
+  register: containerd_config  # 保存输出内容
+  changed_when: false  # 不标记为更改
+
+- name: 将 containerd 配置写入 /etc/containerd/config.toml
+  copy:
+    content: "{{ containerd_config.stdout }}"
+    dest: "/etc/containerd/config.toml"
+
+- name: 修改 containerd 配置
+  lineinfile:
+    path: "/etc/containerd/config.toml"
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+  with_items:
+    - { regexp: 'sandbox_image = "registry.k8s.io/pause:[0-9]+\.[0-9]+"', line: '    sandbox_image = "{{ pause_image }}"' }
+    - { regexp: 'SystemdCgroup = false', line: '            SystemdCgroup = true' }
+    - { regexp: '      config_path = ""', line: '      config_path = "/etc/containerd/certs.d"' }
+    - { regexp: 'root = "/var/lib/containerd"', line: 'root = "{{ containerd_data }}"' }
+
+- name: 创建证书加速目录
+  file:
+    path: /etc/containerd/certs.d/docker.io
+    state: directory
+    mode: '0755'
+
+- name: 创建证书加速目录（registry.k8s.io）
+  file:
+    path: /etc/containerd/certs.d/registry.k8s.io
+    state: directory
+    mode: '0755'
+
+- name: 创建 docker.io 证书加速文件
+  copy:
+    dest: /etc/containerd/certs.d/docker.io/hosts.toml
+    content: |
+      server = "https://docker.io"
+
+      [host."https://dockerproxy.com"]
+        capabilities = ["pull", "resolve", "push"]
+        insecure_skip_verify = true
+      [host."https://docker.m.daocloud.io"]
+        capabilities = ["pull", "resolve", "push"]
+        insecure_skip_verify = true
+      [host."https://reg-mirror.qiniu.com"]
+        capabilities = ["pull", "resolve", "push"]
+        insecure_skip_verify = true
+      [host."https://registry.docker-cn.com"]
+        capabilities = ["pull", "resolve", "push"]
+        insecure_skip_verify = true
+      [host."http://hub-mirror.c.163.com"]
+        capabilities = ["pull", "resolve", "push"]
+        insecure_skip_verify = true
+
+- name: 创建 registry.k8s.io 证书加速文件
+  copy:
+    dest: /etc/containerd/certs.d/registry.k8s.io/hosts.toml
+    content: |
+      server = "https://registry.k8s.io"
+
+      [host."https://k8s.m.daocloud.io"]
+        capabilities = ["pull", "resolve", "push"]
+        insecure_skip_verify = true
+
+- name: 配置 crictl 使其通过 Unix 套接字与 containerd 通信
+  command: "{{ item }}"
+  with_items:
+    - "crictl config runtime-endpoint unix:///run/containerd/containerd.sock"
+    - "crictl config image-endpoint unix:///run/containerd/containerd.sock"
+
+- name: 检查 runc 二进制文件是否存在
+  stat:
+    path: "/usr/local/bin/runc"
+  register: runc_binary
+
+- name: 下载 runc 二进制文件
+  get_url:
+    url: "https://github.com/opencontainers/runc/releases/download/{{ runc_version }}/runc.amd64"
+    dest: "/usr/local/bin/runc"
+    mode: '0755'
+  when: not runc_binary.stat.exists
+
+- name: 确保 runc 有执行权限
+  file:
+    path: "/usr/local/bin/runc"
+    mode: '0755'
+
+- name: 重启 containerd 服务
+  systemd:
+    name: containerd
+    state: restarted
