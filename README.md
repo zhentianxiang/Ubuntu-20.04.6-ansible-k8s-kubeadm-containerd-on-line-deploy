@@ -467,7 +467,7 @@ root@ubuntu:~# ansible-playbook -i hosts.ini add-node.yml
 
 ```sh
 # 拷贝 harbor 证书文件，当然 ansbile 中是没有的，需要后期自己部署 harbor，只是为了使用 ansible 统一集群配置
-root@ubuntu:~# ansible -i hosts.ini newnode -m copy -a "src=/etc/docker/certs.d/ dest=/etc/docker/certs.d/ mode=0755" --become
+root@ubuntu:~# ansible -i hosts.ini newnode -m copy -a "src=/etc/containerd/certs.d/harbor.linuxtian.com dest=/etc/containerd/certs.d/harbor.linuxtian.com mode=0755" --become
 ```
 
 ### 8. 卸载删除集群
