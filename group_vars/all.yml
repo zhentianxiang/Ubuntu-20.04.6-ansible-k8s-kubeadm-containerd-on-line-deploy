@@ -2,7 +2,6 @@ containerd_data: '/var/lib/containerd'                                          
 runc_version: 'v1.1.9'                                                                # runc 版本
 containerd_version: '1.7.25'                                                          # containerd 版本
 
-# kubernetes 安装信息
 kube_gpg_key: "https://mirrors.aliyun.com/kubernetes/apt/doc/apt-key.gpg"             # 阿里云 k8s 源证书
 kube_repo: "deb [arch=amd64] https://mirrors.aliyun.com/kubernetes/apt/ kubernetes-xenial main"  # k8s rpm 包镜像源
 ghproxy: 'https://ghfast.top'                                                         # GitHub 代理加速地址
