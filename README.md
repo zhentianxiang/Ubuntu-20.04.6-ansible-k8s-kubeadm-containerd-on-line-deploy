@@ -466,6 +466,42 @@ root@ubuntu:~# ansible-playbook -i hosts.ini add-node.yml
 ```
 
 ```sh
+# 修改 hosts 添加
+root@ubuntu:~# vim /etc/hosts
+127.0.0.1       localhost
+  
+# The following lines are desirable for IPv6 capable hosts
+::1     localhost       ip6-localhost   ip6-loopback
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters
+
+# k8s 高可用 VIP
+11.0.1.20   apiserver.cluster.local
+
+# 输出 k8s 组主机
+11.0.1.11 k8s-master1
+11.0.1.12 k8s-master2
+11.0.1.13 k8s-master3
+11.0.1.17 k8s-node1
+11.0.1.18 k8s-node2
+11.0.1.19 k8s-node3
+11.0.1.21 k8s-storage-1
+11.0.1.22 k8s-storage-2
+11.0.1.23 k8s-storage-3
+
+# 输出 etcd 组主机
+11.0.1.14 etcd1
+11.0.1.15 etcd2
+11.0.1.16 etcd3
+
+# 输出自定义的 hosts 解析
+127.0.0.1   registry.example.com
+
+# 统一 hosts
+root@ubuntu:~# ansible -i hosts.ini all -m copy -a "src=/etc/hosts dest=/etc/hosts mode=0644" --become
+```
+
+```sh
 # 拷贝 harbor 证书文件，当然 ansbile 中是没有的，需要后期自己部署 harbor，只是为了使用 ansible 统一集群配置
 root@ubuntu:~# ansible -i hosts.ini newnode -m copy -a "src=/etc/containerd/certs.d/harbor.linuxtian.com dest=/etc/containerd/certs.d/harbor.linuxtian.com mode=0755" --become
 ```
