@@ -4,7 +4,7 @@ containerd_version: '1.7.25'                                                    
 
 kube_gpg_key: "https://mirrors.aliyun.com/kubernetes/apt/doc/apt-key.gpg"             # 阿里云 k8s 源证书
 kube_repo: "deb [arch=amd64] https://mirrors.aliyun.com/kubernetes/apt/ kubernetes-xenial main"  # k8s rpm 包镜像源
-ghproxy: 'https://ghfast.top'                                                         # GitHub 代理加速地址
+ghproxy: 'https://ghfast.top/'                                                        # GitHub 代理加速地址
 kube_version: '1.28.0-00'                                                             # k8s 安装软件包的版本
 code_version: 'v1.28.0'                                                               # k8s 源代码版本
 

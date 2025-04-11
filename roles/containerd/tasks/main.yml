@@ -5,7 +5,7 @@
 
 - name: 下载 containerd 发行包
   get_url:
-    url: "https://github.com/containerd/containerd/releases/download/v{{containerd_version}}/cri-containerd-cni-{{containerd_version}}-linux-amd64.tar.gz"
+    url: "{{ ghproxy }}https://github.com/containerd/containerd/releases/download/v{{containerd_version}}/cri-containerd-cni-{{containerd_version}}-linux-amd64.tar.gz"
     dest: "/tmp/cri-containerd-cni-{{containerd_version}}-linux-amd64.tar.gz"
   when: not containerd_binary.stat.exists
 
@@ -141,7 +141,7 @@
 
 - name: 下载 runc 二进制文件
   get_url:
-    url: "https://github.com/opencontainers/runc/releases/download/{{ runc_version }}/runc.amd64"
+    url: "{{ ghproxy }}https://github.com/opencontainers/runc/releases/download/{{ runc_version }}/runc.amd64"
     dest: "/usr/local/bin/runc"
     mode: '0755'
   when: not runc_binary.stat.exists
