@@ -16,12 +16,13 @@ containerd_data: '/var/lib/containerd'
 runc_version: 'v1.1.9'
 containerd_version: '1.7.25'
 kube_version: '1.28.0-00'
-k8s_version: 'v1.28.2'
+k8s_version: 'v1.28.0'
 code_version: 'v1.28.0'
 tmp_dir: '/opt/k8s-install/join'
 docker_data_dir: '/var/lib/docker'
 kubelet_data_dir: '/var/lib/kubelet'
 k8s_image_url: 'registry.cn-hangzhou.aliyuncs.com/google_containers'
+pause_image: 'registry.cn-hangzhou.aliyuncs.com/google_containers/pause:3.9'
 
 # k8s master 节点预留 ip
 k8s_extra_ips:
