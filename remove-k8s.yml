@@ -109,6 +109,38 @@
       command: systemctl daemon-reload
       ignore_errors: yes
 
+    - name: 清理 iptables 规则
+      shell: |
+        iptables -F
+        iptables -X
+        iptables -t nat -F
+        iptables -t nat -X
+        iptables -t mangle -F
+        iptables -t mangle -X
+        iptables -P FORWARD ACCEPT
+      ignore_errors: yes
+
+    - name: 清理 CNI 网络接口
+      shell: |
+        ip link | grep -E 'cni|flannel|vxlan|calico|tunl' | awk -F: '{print $2}' | xargs -I{} ip link delete {} || true
+      ignore_errors: yes
+
+    - name: 删除 hosts 中 K8s 添加的主机解析记录
+      lineinfile:
+        path: /etc/hosts
+        regexp: '.*k8s.*'
+        state: absent
+      ignore_errors: yes
+
+
+    - name: 干掉可能存在的 kube 相关进程
+      shell: |
+        pids=$(ps -ef | grep -E 'kube|etcd' | grep -v grep | awk '{print $2}')
+        if [ -n "$pids" ]; then
+          kill -9 $pids
+        fi
+      ignore_errors: yes
+
 - hosts: ha
   gather_facts: false
   tasks: 

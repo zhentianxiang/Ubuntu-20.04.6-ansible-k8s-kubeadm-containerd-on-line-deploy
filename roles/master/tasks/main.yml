@@ -74,6 +74,15 @@
   shell: "kubeadm reset -f"
   when: is_primary_etcd_node
 
+- name: 干掉可能存在的 kube 相关进程
+  shell: |
+    pids=$(ps -ef | grep -E 'kube|etcd' | grep -v grep | awk '{print $2}')
+    if [ -n "$pids" ]; then
+      kill -9 $pids
+    fi
+  ignore_errors: yes
+  when: is_primary_etcd_node
+
 - name: 删除相关 kube 文件和目录
   file:
     path: "{{ item }}"
