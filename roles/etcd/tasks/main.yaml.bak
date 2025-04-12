@@ -1,33 +1,28 @@
 ---
-- name: 在主ETCD节点上安装OpenSSL
+- name: "在主ETCD节点上安装OpenSSL"
   ansible.builtin.yum:
     name: openssl
     state: present
   when: "'etcd' in group_names"
 
-#- name: 在etcd和master节点上创建etcd用户和组
-#  user:
-#    name: etcd
-#    comment: "ETCD User"
-#    shell: /sbin/nologin
-#    system: yes
-#  when: "'etcd' in group_names or 'master' in group_names"
-
-- name: 清理可能存在的 /etc/etcd/ssl 目录
-  file:
-    path: "{{ etcd_ssl }}"
-    state: absent
-  become: yes
+- name: "在etcd和master节点上创建etcd用户和组"
+  user:
+    name: etcd
+    comment: "ETCD User"
+    shell: /sbin/nologin
+    system: yes
   when: "'etcd' in group_names or 'master' in group_names"
 
-- name: 在etcd和master节点上为etcd证书创建目录
+- name: "在etcd和master节点上为etcd证书创建目录"
   ansible.builtin.file:
     path: "{{ etcd_ssl }}"
     state: directory
+    owner: etcd
+    group: etcd
     mode: '0755'
   when: "'etcd' in group_names or 'master' in group_names"
 
-- name: 检查当前节点是否为主ETCD节点
+- name: "检查当前节点是否为主ETCD节点"
   ansible.builtin.set_fact:
     is_primary_etcd_node: "{{ inventory_hostname == groups['etcd'][0] }}"
 
@@ -49,16 +44,16 @@
   until: download_result is succeeded
   when: "'etcd' in group_names and is_primary_etcd_node and not cfssl_file.stat.exists"
 
-- name: 检查 cfssljson 是否已存在
+- name: 检查 cfssl-json 是否已存在
   stat:
-    path: "/usr/local/bin/cfssljson"
+    path: "/usr/local/bin/cfssl-json"
   register: cfssl_json_file
   when: "'etcd' in group_names and is_primary_etcd_node"
 
-- name: 下载 cfssljson
+- name: 下载 cfssl-json
   get_url:
     url: "https://pkg.cfssl.org/R1.2/cfssljson_linux-amd64"
-    dest: /usr/local/bin/cfssljson
+    dest: /usr/local/bin/cfssl-json
     mode: '0755'
   register: download_result
   retries: 10
@@ -86,54 +81,53 @@
 - name: 生成 ca-config.json 文件
   template:
     src: templates/ca-config.json.j2
-    dest: "{{ etcd_ssl }}/ca-config.json"
-    mode: '0644'
+    dest: /etc/etcd/ssl/ca-config.json
+    owner: etcd
+    group: etcd
+    mode: '0755'
   become: yes
   when: is_primary_etcd_node
 
 - name: 生成 ca-csr.json 文件
   template:
     src: templates/ca-csr.json.j2
-    dest: "{{ etcd_ssl }}/ca-csr.json"
-    mode: '0644'
+    dest: /etc/etcd/ssl/ca-csr.json
+    owner: etcd
+    group: etcd
+    mode: '0755'
   become: yes
   when: is_primary_etcd_node
 
 - name: 创建根证书
-  shell: cfssl gencert -initca ca-csr.json | cfssljson -bare ca
+  shell: cfssl gencert -initca ca-csr.json | cfssl-json -bare ca
   args:
-    chdir: "{{ etcd_ssl }}"
+    chdir: /etc/etcd/ssl
   when: is_primary_etcd_node
 
 - name: 生成 server-csr.json 文件
   template:
     src: templates/server-csr.json.j2
-    dest: "{{ etcd_ssl }}/server-csr.json"
-    mode: '0644'
+    dest: /etc/etcd/ssl/server-csr.json
+    owner: etcd
+    group: etcd
+    mode: '0755'
   become: yes
   when: is_primary_etcd_node
 
 - name: 生成etcd证书
-  shell: cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=server server-csr.json | cfssljson -bare server
+  shell: cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=www server-csr.json | cfssl-json -bare server
   args:
-    chdir: "{{ etcd_ssl }}"
+    chdir: /etc/etcd/ssl
   when: is_primary_etcd_node
-
-- name: 递归更改 /etc/etcd/ssl 目录及其内容的属主、属组和权限
-  file:
-    path: "{{ etcd_ssl }}"
-    state: directory
-    mode: '0644'
-    recurse: yes  # 递归更改目录及其内容的属主、属组和权限
-  become: yes
-  when: "'etcd' in group_names"
 
 - name: 从主ETCD节点获取文件
   fetch:
     src: "{{ etcd_ssl }}/{{ item }}"
     dest: "/tmp/{{ item }}"
     flat: yes
-    mode: '0644'
+    owner: etcd
+    group: etcd
+    mode: '0755'
   run_once: true
   when: is_primary_etcd_node
   loop:
@@ -146,7 +140,9 @@
   copy:
     src: "/tmp/{{ item }}"
     dest: "{{ etcd_ssl }}/{{ item }}"
-    mode: '0644'
+    owner: etcd
+    group: etcd
+    mode: '0755'
   loop:
     - 'ca-key.pem'
     - 'ca.pem'
@@ -158,7 +154,9 @@
   copy:
     src: "/tmp/{{ item }}"
     dest: "{{ etcd_ssl }}/{{ item }}"
-    mode: '0644'
+    owner: etcd
+    group: etcd
+    mode: '0755'
   loop:
     - 'ca-key.pem'
     - 'ca.pem'
@@ -166,52 +164,22 @@
     - 'server.pem'
   when: "'master' in group_names"
 
-- name: 停止可能已经启动并存在的 etcd 服务
-  systemd:
-    name: etcd
-    state: stopped
-    enabled: no
-  ignore_errors: yes
-  become: yes
-  when: "'etcd' in group_names"
-
-- name: 清理可能存在的 /var/lib/etcd 目录
+- name: 创建 /var/lib/etcd 目录
   file:
     path: "{{ etcd_data }}"
-    state: absent
+    state: directory
+    owner: etcd
+    group: etcd
+    mode: '0750'
   become: yes
   when: "'etcd' in group_names"
-
-- name: 调试 etcd_data 变量
-  debug:
-    msg: "etcd_data: {{ etcd_data }}"
-  when: "'etcd' in group_names"
-
-#- name: 创建 /var/lib/etcd 目录
-#  file:
-#    path: "{{ etcd_data }}"
-#    state: directory
-#    owner: etcd
-#    group: etcd
-#    mode: '700'
-#  become: yes
-#  when: "'etcd' in group_names"
-
-#- name: 检查 /var/lib/etcd 目录是否存在
-#  stat:
-#    path: "{{ etcd_data }}"
-#  register: etcd_dir_stat
-#  when: "'etcd' in group_names"
-
-#- name: 输出 /var/lib/etcd 目录状态
-#  debug:
-#    msg: "{{ etcd_dir_stat }}"
-#  when: "'etcd' in group_names"
 
 - name: 复制etcd配置
   template:
     src: etcd.conf.j2
     dest: "{{ etcd_conf }}/etcd.conf"
+    owner: etcd
+    group: etcd
     mode: '0644'
   when: "'etcd' in group_names"
 
@@ -272,10 +240,74 @@
   become: yes
   when: "'etcd' in group_names"
 
-#- name: 启动并启用 etcd 服务
-#  systemd:
-#    name: etcd
-#    state: restarted
-#    enabled: yes
-#  become: yes
-#  when: "'etcd' in group_names"
+- name: 禁用之前的 etcd 服务
+  systemd:
+    name: etcd
+    state: stopped
+    enabled: no
+  ignore_errors: yes
+  become: yes
+  when: "'etcd' in group_names"
+
+- name: 启动并启用 etcd 服务
+  systemd:
+    name: etcd
+    state: restarted
+    enabled: yes
+  become: yes
+  when: "'etcd' in group_names"
+
+- name: 设置 etcd 备份系统
+  block:
+    - name: 创建备份目录
+      file:
+        path: "{{ etcd_backup_dir | default('/var/lib/etcd-backup') }}"
+        state: directory
+        owner: etcd
+        group: etcd
+        mode: '0750'
+
+    - name: 安装 etcd 备份脚本
+      template:
+        src: templates/etcd-backup.sh.j2
+        dest: /usr/local/bin/etcd-backup.sh
+        owner: etcd
+        group: etcd
+        mode: '0750'
+
+    - name: 安装 etcd-backup.service
+      template:
+        src: templates/etcd-backup.service.j2
+        dest: /etc/systemd/system/etcd-backup.service
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: 安装 etcd-backup.timer
+      template:
+        src: templates/etcd-backup.timer.j2
+        dest: /etc/systemd/system/etcd-backup.timer
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: 重载 systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: 启用并启动 etcd-backup.timer
+      systemd:
+        name: etcd-backup.timer
+        enabled: yes
+        state: started
+
+    - name: 执行首次备份
+      command: /usr/local/bin/etcd-backup.sh
+      register: backup_result
+      changed_when: false
+      ignore_errors: yes
+
+    - name: 显示首次备份结果
+      debug:
+        var: backup_result
+  when: "'etcd' in group_names"

@@ -1,4 +1,5 @@
 apiVersion: kubeadm.k8s.io/v1beta3
+kind: InitConfiguration
 bootstrapTokens:
 - groups:
   - system:bootstrappers:kubeadm:default-node-token
@@ -7,7 +8,6 @@ bootstrapTokens:
   usages:
   - signing
   - authentication
-kind: InitConfiguration
 localAPIEndpoint:
   advertiseAddress: 0.0.0.0
   bindPort: 6443
@@ -21,12 +21,22 @@ nodeRegistration:
   - effect: NoSchedule
     key: node-role.kubernetes.io/master
 ---
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: ClusterConfiguration
+kubernetesVersion: "{{ k8s_version }}"
+imageRepository: "{{ k8s_image_url }}"
+networking:
+  dnsDomain: cluster.local
+  podSubnet: "{{ pod_cidr }}"
+  serviceSubnet: "{{ service_cidr }}"
 apiServer:
   certSANs:
   - kubernetes
   - kubernetes.default
   - kubernetes.default.svc
   - kubernetes.default.svc.cluster.local
+  - dns.linuxtian.com
+  - linuxtian.com
   - {{ api_vip_hosts }}
 {% for host in groups['master'] %}
   - {{ host }}
@@ -39,25 +49,22 @@ apiServer:
   - {{ ip }}
 {% endfor %}
 {% endif %}
-apiVersion: kubeadm.k8s.io/v1beta3
 certificatesDir: /etc/kubernetes/pki
 clusterName: kubernetes
 controlPlaneEndpoint: "{{ api_vip_hosts }}:{{ lb_port }}"
-controllerManager: {}
-dns: {}
 # 使用默认的集群内ETCD
-etcd:
-  local:
-    dataDir: /var/lib/etcd
 #etcd:
-#  external:
-#    endpoints:
-#{% for host in groups['etcd'] %}
-#    - https://{{ host }}:2379
-#{% endfor %}
-#    caFile: "{{ etcd_ssl }}/ca.pem"
-#    certFile: "{{ etcd_ssl }}/server.pem"
-#    keyFile: "{{ etcd_ssl }}/server-key.pem"
+#  local:
+#    dataDir: /var/lib/etcd
+etcd:
+  external:
+    endpoints:
+{% for host in groups['etcd'] %}
+    - https://{{ host }}:2379
+{% endfor %}
+    caFile: "{{ etcd_ssl }}/etcd-ca.pem"
+    certFile: "{{ etcd_ssl }}/etcd-server.pem"
+    keyFile: "{{ etcd_ssl }}/etcd-server-key.pem"
 # 这种是使用系统网卡IP地址如: https://10.4.212.151:2379
 #etcd:
 #  external:
@@ -66,14 +73,13 @@ etcd:
 #{% for host in groups['etcd'] %}
 #    - https://{{ hostvars[host].ansible_default_ipv4.address }}:2379
 #{% endfor %}
-#    caFile: {{ etcd_ssl }}/ca.pem
-#    certFile: {{ etcd_ssl }}/server.pem
-#    keyFile: {{ etcd_ssl }}/server-key.pem
-imageRepository: "{{ k8s_image_url }}"
-kind: ClusterConfiguration
-kubernetesVersion: "{{ k8s_version }}"
-networking:
-  dnsDomain: cluster.local
-  podSubnet: "{{ pod_cidr }}"
-  serviceSubnet: "{{ service_cidr }}"
+#    caFile: "{{ etcd_ssl }}/etcd-ca.pem"
+#    certFile: "{{ etcd_ssl }}/etcd-server.pem"
+#    keyFile: "{{ etcd_ssl }}/etcd-server-key.pem"
 scheduler: {}
+controllerManager: {}
+dns: {}
+---
+apiVersion: kubeproxy.config.k8s.io/v1alpha1
+kind: KubeProxyConfiguration
+mode: ipvs
