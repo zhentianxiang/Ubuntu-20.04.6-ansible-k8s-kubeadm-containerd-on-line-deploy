@@ -2,10 +2,21 @@
 - hosts: k8s
   gather_facts: False
   tasks:
-    - name: 移除k8s集群配置
-      shell: "kubeadm reset -f  >/dev/null 2>&1"
+    - name: 停止 kubelet 服务
+      systemd:
+        name: kubelet
+        state: stopped
       ignore_errors: yes
-      failed_when: false
+
+    - name: 停止 containerd 服务
+      systemd:
+        name: containerd
+        state: stopped
+      ignore_errors: yes
+
+    - name: 移除k8s集群配置
+      shell: "kubeadm reset -f >/dev/null 2>&1"
+      ignore_errors: yes
 
     - name: 卸载相关软件
       package:
@@ -15,50 +26,117 @@
           - kubectl
           - docker-ce
           - docker-ce-cli
-          - containerd.io
-          - keepalived
         state: absent
+      ignore_errors: yes
+
+    - name: 清理 containerd 挂载点
+      shell: |
+        # 清理容器挂载点
+        mount | grep -E 'containerd|kubelet' | awk '{print $3}' | xargs -I {} umount -lf {} || true
+        # 清理 shm 挂载
+        mount | grep '/run/containerd' | awk '{print $3}' | xargs -I {} umount -lf {} || true
+      ignore_errors: yes
+
+    - name: 删除 containerd 相关文件
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "/etc/containerd"
+        - "{{ containerd_data }}"
+        - /run/containerd
+        - /var/run/containerd
+      ignore_errors: yes
+
+    - name: 删除 containerd 二进制文件
+      file:
+        path: "/usr/local/bin/{{ item }}"
+        state: absent
+      loop:
+        - containerd
+        - containerd-shim
+        - containerd-shim-runc-v1
+        - containerd-shim-runc-v2
+        - containerd-stress
+        - crictl
+        - critest
+        - ctd-decoder
+        - ctr
+        - runc
+      ignore_errors: yes
+
+    - name: 删除 systemd containerd 服务
+      file:
+        path: /lib/systemd/system/containerd.service
+        state: absent
+      ignore_errors: yes
 
     - name: 删除 kubelet 数据
-      ignore_errors: yes
       file:
         path: "{{ kubelet_data_dir }}"
         state: absent
+      ignore_errors: yes
+
+    - name: 删除 docker 数据
+      file:
+        path: "{{ docker_data_dir }}"
+        state: absent
+      ignore_errors: yes
 
     - name: 开启swap
       replace:
         path: /etc/fstab
-        regexp: '^#(/swap.img.*) swap (.*)'
+        regexp: '^#/(.*) swap (.*)'
         replace: '/\1 swap \2'
+      ignore_errors: yes
 
-    - name: 删除相关 kube 文件和目录
+    - name: 删除其他相关文件和目录
       file:
         path: "{{ item }}"
         state: absent
       loop:
         - /etc/kubernetes/
         - /root/.kube/config
-        - /var/lib/etcd
-        - /etc/etcd
-        - /var/lib/kubelet
-        - /var/lib/dockershim
+        - "{{ etcd_data }}"
+        - "{{ etcd_conf }}"
         - /var/run/kubernetes
         - /var/lib/cni
         - /etc/cni/net.d
-        #- "{{ tmp_dir }}"
+        - "{{ tmp_dir }}"
+      ignore_errors: yes
+
+    - name: 重新加载 systemd
+      command: systemctl daemon-reload
+      ignore_errors: yes
 
 - hosts: ha
   gather_facts: false
   tasks: 
+    - name: 停止负载均衡服务
+      systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - nginx
+        - keepalived
+        - haproxy
+      ignore_errors: yes
+
     - name: 卸载高可用负载均衡服务
       package:
         name:
           - nginx
           - keepalived
+          - haproxy
         state: absent
+      ignore_errors: yes
 
-#- hosts: k8s
-#  gather_facts: false
-#  tasks:
-#    - name: 1分钟后重启k8s服务器
-#      shell: "shutdown -r 1"
+    - name: 删除负载均衡配置文件
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/nginx
+        - /etc/keepalived
+        - /etc/haproxy
+      ignore_errors: yes
